@@ -1,10 +1,24 @@
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
-from langgraph.graph import Graph
+from typing import TypedDict, List, Optional, Any
+from langgraph.graph import StateGraph as Graph
 
 # Import agent classes
 from .agents import SearchAgent, CuratorAgent, WriterAgent, DesignerAgent, EditorAgent, PublisherAgent, CritiqueAgent
+
+class NewsState(TypedDict):
+    query: str
+    sources: Optional[List[dict]]
+    image: Optional[str]
+    title: Optional[str]
+    date: Optional[str]
+    paragraphs: Optional[List[str]]
+    summary: Optional[str]
+    critique: Optional[str]
+    message: Optional[str]
+    html: Optional[str]
+    path: Optional[str]
 
 
 class MasterAgent:
@@ -23,7 +37,7 @@ class MasterAgent:
         publisher_agent = PublisherAgent(self.output_dir)
 
         # Define a Langchain graph
-        workflow = Graph()
+        workflow = Graph(NewsState)
 
         # Add nodes for each agent
         workflow.add_node("search", search_agent.run)
@@ -36,13 +50,15 @@ class MasterAgent:
         workflow.add_edge('search', 'curate')
         workflow.add_edge('curate', 'write')
         workflow.add_edge('write', 'critique')
-        workflow.add_conditional_edges(start_key='critique',
-                                       condition=lambda x: "accept" if x['critique'] is None else "revise",
-                                       conditional_edge_mapping={"accept": "design", "revise": "write"})
+        workflow.add_conditional_edges(
+            'critique',
+            lambda x: "accept" if x.get('critique') is None else "revise",
+            {"accept": "design", "revise": "write"}
+        )
 
         # set up start and end nodes
-        workflow.set_entry_point("search")
-        workflow.set_finish_point("design")
+        workflow.add_edge("__start__", "search")
+        workflow.add_edge("design", "__end__")
 
         # compile the graph
         chain = workflow.compile()
